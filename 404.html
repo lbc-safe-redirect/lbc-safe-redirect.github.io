@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Redirection en cours…</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 36rem; margin: 15vh auto; padding: 0 1.5rem; color: #252525; }
+    .error { color: #a31515; }
+  </style>
+</head>
+<body>
+  <p id="status">Redirection en cours…</p>
+  <noscript>JavaScript doit être activé pour ouvrir ce lien.</noscript>
+  <script>
+    (() => {
+      const status = document.getElementById('status');
+      const params = new URLSearchParams(window.location.search);
+      const segments = window.location.pathname.split('/').filter(Boolean);
+      const pathToken = segments.at(-1) || '';
+      const hashToken = decodeURIComponent(window.location.hash.slice(1));
+      const token = (params.get('t') || hashToken || pathToken || '').trim();
+
+      if (!/^[A-Za-z0-9_-]{1,80}$/.test(token)) {
+        status.textContent = 'Ce lien est introuvable.';
+        status.className = 'error';
+        return;
+      }
+
+      const redirectsUrl = 'https://raw.githubusercontent.com/lbc-safe-redirect/lbc-safe-redirect.github.io/main/redirects.json';
+      fetch(redirectsUrl + '?ts=' + Date.now(), { cache: 'no-store' })
+        .then(response => {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        })
+        .then(redirects => {
+          const target = redirects[token];
+          if (typeof target !== 'string' || !/^https?:\/\//i.test(target)) {
+            throw new Error('unknown token');
+          }
+          window.location.replace(target);
+        })
+        .catch(() => {
+          status.textContent = 'Ce lien est introuvable ou temporairement indisponible.';
+          status.className = 'error';
+        });
+    })();
+  </script>
+</body>
+</html>
