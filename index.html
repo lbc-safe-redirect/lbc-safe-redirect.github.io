@@ -17,8 +17,10 @@
       const token = (params.get('t') || hashToken || pathToken || '').trim();
       if (!/^[A-Za-z0-9_-]{1,80}$/.test(token)) return;
 
-      const redirectsUrl = 'https://raw.githubusercontent.com/lbc-safe-redirect/lbc-safe-redirect.github.io/main/redirects.json';
-      fetch(redirectsUrl + '?ts=' + Date.now(), { cache: 'no-store' })
+      const requestedRevision = (params.get('v') || '').trim();
+      const revision = /^[0-9a-f]{40}$/i.test(requestedRevision) ? requestedRevision : 'main';
+      const redirectsUrl = `https://raw.githubusercontent.com/lbc-safe-redirect/lbc-safe-redirect.github.io/${revision}/redirects.json`;
+      fetch(redirectsUrl, { cache: 'no-store' })
         .then(response => {
           if (!response.ok) throw new Error('HTTP ' + response.status);
           return response.json();
