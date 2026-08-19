@@ -12,10 +12,12 @@
 </head>
 <body>
   <p id="status">Redirection en cours…</p>
+  <p><a id="manual" hidden>Ouvrir le lien</a></p>
   <noscript>JavaScript doit être activé pour ouvrir ce lien.</noscript>
   <script>
     (() => {
       const status = document.getElementById('status');
+      const manual = document.getElementById('manual');
       const params = new URLSearchParams(window.location.search);
       const segments = window.location.pathname.split('/').filter(Boolean);
       const pathToken = segments.at(-1) || '';
@@ -28,23 +30,62 @@
         return;
       }
 
-      const redirectsUrl = 'https://raw.githubusercontent.com/lbc-safe-redirect/lbc-safe-redirect.github.io/main/redirects.json';
-      fetch(redirectsUrl + '?ts=' + Date.now(), { cache: 'no-store' })
-        .then(response => {
+      const rawUrl = 'https://raw.githubusercontent.com/lbc-safe-redirect/lbc-safe-redirect.github.io/main/redirects.json';
+      const pagesUrl = 'https://lbc-safe-redirect.github.io/redirects.json';
+      const apiUrl = 'https://api.github.com/repos/lbc-safe-redirect/lbc-safe-redirect.github.io/contents/redirects.json?ref=main';
+
+      const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const fetchWithTimeout = async (url, decodeApi = false) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 7000);
+        try {
+          const separator = url.includes('?') ? '&' : '?';
+          const response = await fetch(url + separator + 'ts=' + Date.now(), {
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal,
+          });
           if (!response.ok) throw new Error('HTTP ' + response.status);
-          return response.json();
-        })
-        .then(redirects => {
-          const target = redirects[token];
-          if (typeof target !== 'string' || !/^https?:\/\//i.test(target)) {
-            throw new Error('unknown token');
+          const body = await response.json();
+          if (!decodeApi) return body;
+          const binary = atob(String(body.content || '').replace(/\s/g, ''));
+          const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+          return JSON.parse(new TextDecoder().decode(bytes));
+        } finally {
+          clearTimeout(timer);
+        }
+      };
+
+      const targetFrom = redirects => {
+        const target = redirects && redirects[token];
+        return typeof target === 'string' && /^https?:\/\//i.test(target) ? target : '';
+      };
+
+      const resolveTarget = async () => {
+        for (const delay of [0, 700, 1600, 3000]) {
+          if (delay) await pause(delay);
+          const primary = await Promise.allSettled([
+            fetchWithTimeout(rawUrl),
+            fetchWithTimeout(pagesUrl),
+          ]);
+          for (const result of primary) {
+            const target = result.status === 'fulfilled' ? targetFrom(result.value) : '';
+            if (target) return target;
           }
-          window.location.replace(target);
-        })
-        .catch(() => {
-          status.textContent = 'Ce lien est introuvable ou temporairement indisponible.';
-          status.className = 'error';
-        });
+        }
+        return targetFrom(await fetchWithTimeout(apiUrl, true));
+      };
+
+      resolveTarget().then(target => {
+        if (!target) throw new Error('unknown token');
+        manual.href = target;
+        manual.hidden = false;
+        manual.textContent = 'Cliquez ici si la redirection ne démarre pas.';
+        window.location.replace(target);
+      }).catch(() => {
+        status.textContent = 'Ce lien est introuvable ou temporairement indisponible. Veuillez réessayer.';
+        status.className = 'error';
+      });
     })();
   </script>
 </body>
